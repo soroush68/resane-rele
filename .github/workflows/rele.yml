@@ -1,0 +1,42 @@
+# رلهٔ تلگرام سه پروژه (RESANE.md بخش ۴-الف). صف روی سرور هر پروژه است؛ این گردش‌کار فقط می‌خواند، به تلگرام می‌فرستد
+# و نتیجه را اعلام می‌کند. زمان‌بند هر ۱۵ دقیقه فقط در دو پنجرهٔ انتشار تهران (UTC+3:30):
+#   ۱۳:۳۰ تا ۱۵:۱۵ تهران = ۱۰:۰۰ تا ۱۱:۴۵ UTC  (کارت قیمت ۱۳:۳۰)
+#   ۱۷:۳۰ تا ۱۹:۱۵ تهران = ۱۴:۰۰ تا ۱۵:۴۵ UTC  (گزارش خبری ۱۷:۳۰)
+# زمان‌بند گیت‌هاب ۵ تا ۳۰ دقیقه دیر می‌کند و گاهی نوبتی را جا می‌اندازد؛ برای همین چند نوبت پیاپی.
+# رازهای هر پروژه با پیشوند نام بزرگ‌شدهٔ آن: <P>_SITE، <P>_RELE_KEY، <P>_TELEGRAM_TOKEN، <P>_TELEGRAM_CHANNEL.
+name: rele
+
+on:
+  schedule:
+    - cron: "*/15 10-11 * * *"
+    - cron: "*/15 14-15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rele
+  cancel-in-progress: false
+
+jobs:
+  rele:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        p: [SIMANBAZ]   # آهن‌حساب و ملک‌دان: AHANHESAB و MELKDAN پس از ساخت کانال و رازهایشان
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: فرستادن صف تلگرام
+        env:
+          SITE: ${{ secrets[format('{0}_SITE', matrix.p)] }}
+          RELE_KEY: ${{ secrets[format('{0}_RELE_KEY', matrix.p)] }}
+          TELEGRAM_TOKEN: ${{ secrets[format('{0}_TELEGRAM_TOKEN', matrix.p)] }}
+          TELEGRAM_CHANNEL: ${{ secrets[format('{0}_TELEGRAM_CHANNEL', matrix.p)] }}
+          PYTHONIOENCODING: utf-8
+        run: python rele.py
