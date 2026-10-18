@@ -6,6 +6,8 @@
 # زمان‌بند گیت‌هاب ۵ تا ۳۰ دقیقه دیر می‌کند و گاهی نوبتی را جا می‌اندازد؛ برای همین چند نوبت پیاپی.
 # برآورد دقیقه (KOLLI بخش ۵): ۲۰ اجرا در روز (از ۲۵ مهر با پنجرهٔ صبح؛ پیش از آن ۱۶) × یک job هر پروژه × ۱ دقیقه × ۳۰ ≈ ۴۸۰ دقیقه در ماه برای هر پروژه (سه پروژه ≈ ۱۴۴۰)؛
 # بیش از بودجهٔ مخزن‌های خصوصی (DEPLOY.md بخش ۱-الف)، پس این مخزن عمومی است و از ۲۰۰۰ دقیقهٔ مشترک نمی‌خورد.
+# زنده نگه داشتن (۲۶ مهر ۱۴۰۵): گیت‌هاب زمان‌بند مخزن عمومی را پس از ۶۰ روز بی کامیت خاموش می‌کند و تلگرام هر سه پروژه بی‌صدا
+# می‌خوابد؛ پس روز اول هر ماه همین گردش‌کار با رابط گیت‌هاب خودش را دوباره فعال می‌کند (روش keepalive-workflow، بی کامیت). یک گام چندثانیه‌ای.
 # رازهای هر پروژه با پیشوند نام بزرگ‌شدهٔ آن: <P>_SITE، <P>_RELE_KEY، <P>_TELEGRAM_TOKEN، <P>_TELEGRAM_CHANNEL.
 name: rele
 
@@ -18,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # فقط برای گام «زنده نگه داشتن» پایین
 
 concurrency:
   group: rele
@@ -44,3 +47,11 @@ jobs:
           TELEGRAM_CHANNEL: ${{ secrets[format('{0}_TELEGRAM_CHANNEL', matrix.p)] }}
           PYTHONIOENCODING: utf-8
         run: python rele.py
+      - name: زنده نگه داشتن زمان‌بند (روز اول ماه)
+        if: always() && strategy.job-index == 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(date -u +%d)" = "01" ]; then
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/rele.yml/enable" && echo "زمان‌بند دوباره فعال شد"
+          fi
