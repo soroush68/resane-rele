@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 UA = "resane-rele/1 (+https://github.com)"
@@ -65,6 +66,18 @@ def main() -> int:
         print(f"::error::صف خوانده نشد: {code or ''} {err}")
         return 1
     print(f"{len(posts)} پست منتظر")
+    # نام عمومی و عضو کانال (هر دو عمومی‌اند): اگر نام عمومی برداشته شود، پیوند سایت به کانال بی‌صدا می‌میرد
+    q = urllib.parse.quote(chan)
+    gc, gr, gerr = http("GET", f"https://api.telegram.org/bot{token}/getChat?chat_id={q}")
+    mc, mr, _ = http("GET", f"https://api.telegram.org/bot{token}/getChatMemberCount?chat_id={q}")
+    if gc == 200 and isinstance(gr, dict) and gr.get("ok"):
+        nam = (gr.get("result") or {}).get("username")
+        ozv = mr.get("result") if isinstance(mr, dict) and mr.get("ok") else "?"
+        print(f"کانال: {'@' + nam if nam else 'بی نام عمومی'}، عضو {ozv}")
+        if not nam:
+            print("::warning::کانال تلگرام نام عمومی ندارد؛ پیوند t.me سایت کار نمی‌کند")
+    else:
+        print(f"::warning::getChat کانال نشد: {gc or ''} {gerr}")
     shekast = 0
     for i, p in enumerate(posts):
         if i:
