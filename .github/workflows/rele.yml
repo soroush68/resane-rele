@@ -39,7 +39,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        p: [SIMANBAZ]   # آهن‌حساب و ملک‌دان: AHANHESAB و MELKDAN پس از ساخت کانال و رازهایشان
+        # زمان‌بند همهٔ پروژه‌های فهرست پایان سطر بعد («["SIMANBAZ"]») را می‌زند؛ تلنگر (repository_dispatch) فقط پروژهٔ فرستنده را، تا هر پست یک کار بخورد.
+        # پروژهٔ تازه: نامش را به همان فهرست بیفزا (پس از ساخت کانال و رازهای <نام>_SITE، _RELE_KEY، _TELEGRAM_TOKEN، _TELEGRAM_CHANNEL).
+        p: ${{ fromJSON(github.event_name == 'repository_dispatch' && format('["{0}"]', fromJSON('{"simanbaz":"SIMANBAZ","ahanhesab":"AHANHESAB","melkdan":"MELKDAN","kharidkar":"KHARIDKAR"}')[github.event.action]) || '["SIMANBAZ"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
