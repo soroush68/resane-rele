@@ -119,7 +119,8 @@ def main() -> int:
             time.sleep(1.1)
         matn = str(p.get("matn", ""))
         aks = aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None
-        tc, tr, terr = (aks_befrest(token, chan, matn, aks) if aks else (0, None, ""))
+        # زیر عکس متن کوتاه پست (عددها روی تصویرند)؛ سرور قدیمی‌تر zirnevis ندارد و همان matn می‌رود
+        tc, tr, terr = (aks_befrest(token, chan, str(p.get("zirnevis") or matn), aks) if aks else (0, None, ""))
         if aks and tc != 200 and tc is not None:
             print(f"::warning::{p.get('id')}: عکس نرفت ({terr}); متن تنها")
         if not aks or (tc != 200 and tc is not None):
