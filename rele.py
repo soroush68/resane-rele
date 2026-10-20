@@ -47,6 +47,41 @@ def http(method: str, url: str, body: dict | None = None, headers: dict | None =
         return None, None, "پاسخ نامعتبر"
 
 
+def aks_bgir(site: str, rh: dict, pid: str) -> bytes | None:
+    """PNG کارت تصویری پست از سایت، پشت همان کلید رله؛ هر شکستی None (متن تنها)."""
+    req = urllib.request.Request(f"{site}/api/resane/tasvir?id={urllib.parse.quote(pid)}",
+                                 headers={"User-Agent": UA, **rh})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+        return data if data[:8] == b"\x89PNG\r\n\x1a\n" else None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None
+
+
+def aks_befrest(token: str, chan: str, matn: str, png: bytes) -> tuple[int | None, dict | None, str]:
+    """sendPhoto چندبخشی با متن پست در زیرنویس (سرور فقط وقتی tasvir می‌دهد که متن در سقف زیرنویس جا شود)."""
+    marz = "rele" + os.urandom(8).hex()
+    body = b"".join([f'--{marz}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode("utf-8")
+                     for k, v in (("chat_id", chan), ("caption", matn))]
+                    + [f'--{marz}\r\nContent-Disposition: form-data; name="photo"; filename="kart.png"\r\n'
+                       f'Content-Type: image/png\r\n\r\n'.encode() + png + b"\r\n", f"--{marz}--\r\n".encode()])
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendPhoto", data=body, method="POST",
+                                 headers={"User-Agent": UA, "Content-Type": f"multipart/form-data; boundary={marz}"})
+    try:
+        with urllib.request.urlopen(req, timeout=40) as r:
+            return r.status, json.loads(r.read().decode("utf-8") or "null"), ""
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode("utf-8") or "null"), f"HTTP {e.code}"
+        except ValueError:
+            return e.code, None, f"HTTP {e.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return None, None, type(e).__name__
+    except ValueError:
+        return None, None, "پاسخ نامعتبر"
+
+
 def main() -> int:
     site = os.environ.get("SITE", "").rstrip("/")
     key = os.environ.get("RELE_KEY", "").strip()
@@ -82,8 +117,14 @@ def main() -> int:
     for i, p in enumerate(posts):
         if i:
             time.sleep(1.1)
-        tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/sendMessage",
-                            {"chat_id": chan, "text": str(p.get("matn", ""))[:4096]})
+        matn = str(p.get("matn", ""))
+        aks = aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None
+        tc, tr, terr = (aks_befrest(token, chan, matn, aks) if aks else (0, None, ""))
+        if aks and tc != 200 and tc is not None:
+            print(f"::warning::{p.get('id')}: عکس نرفت ({terr}); متن تنها")
+        if not aks or (tc != 200 and tc is not None):
+            tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/sendMessage",
+                                {"chat_id": chan, "text": matn[:4096]})
         if tc == 200 and isinstance(tr, dict) and tr.get("ok"):
             natije = {"vaziat": "sent", "shenase": str((tr.get("result") or {}).get("message_id", ""))}
         elif tc is None:
