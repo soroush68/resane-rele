@@ -125,7 +125,9 @@ def main() -> int:
             print(f"::warning::{p.get('id')}: عکس نرفت ({terr}); متن تنها")
         if not aks or (tc != 200 and tc is not None):
             tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/sendMessage",
-                                {"chat_id": chan, "text": matn[:4096]})
+                                {"chat_id": chan, "text": matn[:4096],
+                                 # پیش‌نمایش پیوند فقط وقتی سرور بخواهد؛ سرور قدیمی‌تر این فیلد را ندارد و پیش‌نمایش می‌ماند
+                                 "link_preview_options": {"is_disabled": p.get("pishnamayesh") is False}})
         if tc == 200 and isinstance(tr, dict) and tr.get("ok"):
             natije = {"vaziat": "sent", "shenase": str((tr.get("result") or {}).get("message_id", ""))}
         elif tc is None:
