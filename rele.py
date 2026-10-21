@@ -59,11 +59,11 @@ def aks_bgir(site: str, rh: dict, pid: str) -> bytes | None:
         return None
 
 
-def aks_befrest(token: str, chan: str, matn: str, png: bytes) -> tuple[int | None, dict | None, str]:
+def aks_befrest(token: str, chan: str, matn: str, png: bytes, qaleb: str = "") -> tuple[int | None, dict | None, str]:
     """sendPhoto چندبخشی با متن پست در زیرنویس (سرور فقط وقتی tasvir می‌دهد که متن در سقف زیرنویس جا شود)."""
     marz = "rele" + os.urandom(8).hex()
     body = b"".join([f'--{marz}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode("utf-8")
-                     for k, v in (("chat_id", chan), ("caption", matn))]
+                     for k, v in (("chat_id", chan), ("caption", matn), *((("parse_mode", qaleb),) if qaleb else ()))]
                     + [f'--{marz}\r\nContent-Disposition: form-data; name="photo"; filename="kart.png"\r\n'
                        f'Content-Type: image/png\r\n\r\n'.encode() + png + b"\r\n", f"--{marz}--\r\n".encode()])
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendPhoto", data=body, method="POST",
@@ -118,16 +118,19 @@ def main() -> int:
         if i:
             time.sleep(1.1)
         matn = str(p.get("matn", ""))
+        # qaleb: سرور متن را HTML ساخته (پیوند روی واژه، سیمان‌باز ۲۹ مهر ۱۴۰۵)؛ سرور بی این فیلد متن ساده می‌دهد
+        qaleb = p.get("qaleb") if p.get("qaleb") in ("HTML", "MarkdownV2") else ""
         aks = aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None
         # زیر عکس متن کوتاه پست (عددها روی تصویرند)؛ سرور قدیمی‌تر zirnevis ندارد و همان matn می‌رود
-        tc, tr, terr = (aks_befrest(token, chan, str(p.get("zirnevis") or matn), aks) if aks else (0, None, ""))
+        tc, tr, terr = (aks_befrest(token, chan, str(p.get("zirnevis") or matn), aks, qaleb) if aks else (0, None, ""))
         if aks and tc != 200 and tc is not None:
             print(f"::warning::{p.get('id')}: عکس نرفت ({terr}); متن تنها")
         if not aks or (tc != 200 and tc is not None):
             tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/sendMessage",
                                 {"chat_id": chan, "text": matn[:4096],
                                  # پیش‌نمایش پیوند فقط وقتی سرور بخواهد؛ سرور قدیمی‌تر این فیلد را ندارد و پیش‌نمایش می‌ماند
-                                 "link_preview_options": {"is_disabled": p.get("pishnamayesh") is False}})
+                                 "link_preview_options": {"is_disabled": p.get("pishnamayesh") is False},
+                                 **({"parse_mode": qaleb} if qaleb else {})})
         if tc == 200 and isinstance(tr, dict) and tr.get("ok"):
             natije = {"vaziat": "sent", "shenase": str((tr.get("result") or {}).get("message_id", ""))}
         elif tc is None:
