@@ -60,6 +60,8 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets[format('{0}_TELEGRAM_TOKEN', matrix.p)] }}
           TELEGRAM_CHANNEL: ${{ secrets[format('{0}_TELEGRAM_CHANNEL', matrix.p)] }}
           PYTHONIOENCODING: utf-8
+          # جبران یک‌باره (۱ آبان ۱۴۰۵): تلنگر با client_payload {"jobran": true} پست‌های گذشتهٔ رفته به بله و نرفته به تلگرام را می‌فرستد
+          JOBRAN: ${{ github.event.client_payload.jobran && '1' || '' }}
         run: python rele.py
       - name: زنده نگه داشتن زمان‌بند (روز اول ماه)
         if: always() && strategy.job-index == 0

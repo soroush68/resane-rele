@@ -96,7 +96,10 @@ def main() -> int:
     if token.lower().startswith("bot"):
         token = token[3:]
     rh = {"X-Rele-Key": key}
-    code, posts, err = http("GET", f"{site}/api/resane/montazer?bastar=telegram", headers=rh)
+    # جبران: سرور پست‌های روزهای گذشته را که به بله رفته و به تلگرام نرفته به ترتیب زمان می‌دهد (سروری که این را نشناسد صف عادی را می‌دهد)
+    jobran = os.environ.get("JOBRAN", "").strip() == "1"
+    code, posts, err = http("GET", f"{site}/api/resane/montazer?bastar=telegram{'&jobran=1' if jobran else ''}",
+                            headers=rh, timeout=40)
     if code != 200 or not isinstance(posts, list):
         print(f"::error::صف خوانده نشد: {code or ''} {err}")
         return 1
@@ -116,7 +119,8 @@ def main() -> int:
     shekast = 0
     for i, p in enumerate(posts):
         if i:
-            time.sleep(1.1)
+            # تلگرام در کانال حدود ۲۰ پیام در دقیقه می‌پذیرد؛ جبرانِ یک‌جا آرام‌تر می‌رود
+            time.sleep(3.5 if jobran else 1.1)
         matn = str(p.get("matn", ""))
         # qaleb: سرور متن را HTML ساخته (پیوند روی واژه، سیمان‌باز ۲۹ مهر ۱۴۰۵)؛ سرور بی این فیلد متن ساده می‌دهد
         qaleb = p.get("qaleb") if p.get("qaleb") in ("HTML", "MarkdownV2") else ""
