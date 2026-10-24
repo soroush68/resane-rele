@@ -62,6 +62,8 @@ jobs:
           PYTHONIOENCODING: utf-8
           # جبران یک‌باره (۱ آبان ۱۴۰۵): تلنگر با client_payload {"jobran": true} پست‌های گذشتهٔ رفته به بله و نرفته به تلگرام را می‌فرستد
           JOBRAN: ${{ github.event.client_payload.jobran && '1' || '' }}
+          # ویدئوی یک‌بار (ملک‌دان، ۲ آبان ۱۴۰۵): تلنگر با client_payload {"video_once": {"video": "/video/x.mp4", "caption": "…", "qaleb": "HTML"}} یک ویدئو را بی صف می‌فرستد
+          VIDEO_ONCE: ${{ github.event.client_payload.video_once && toJSON(github.event.client_payload.video_once) || '' }}
         run: python rele.py
       - name: زنده نگه داشتن زمان‌بند (روز اول ماه)
         if: always() && strategy.job-index == 0

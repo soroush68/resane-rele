@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -24,6 +25,9 @@ import urllib.parse
 import urllib.request
 
 UA = "resane-rele/1 (+https://github.com)"
+# ویدئوی روزانه (ملک‌دان، ۲ آبان ۱۴۰۵): سرور در پست صف فیلد `video` (مسیر فایل روی سایت) می‌دهد؛ مسیر فقط با این الگوی سخت پذیرفته می‌شود
+VIDEO_RE = re.compile(r"/video/[a-z0-9-]{1,80}\.mp4")
+SAGHF_VIDEO = 49_000_000  # سقف بارگذاری ربات تلگرام ۵۰ مگابایت است
 
 
 def http(method: str, url: str, body: dict | None = None, headers: dict | None = None,
@@ -82,6 +86,66 @@ def aks_befrest(token: str, chan: str, matn: str, png: bytes, qaleb: str = "") -
         return None, None, "پاسخ نامعتبر"
 
 
+def video_bgir(site: str, masir: str) -> bytes | None:
+    """mp4 ویدئوی پست از سایت (مسیر عمومی `/video/…`)؛ هر شکستی یا فایل غیر mp4 None (پست بی ویدئو، متن تنها)."""
+    if not VIDEO_RE.fullmatch(masir):
+        return None
+    req = urllib.request.Request(f"{site}{masir}", headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            data = r.read(SAGHF_VIDEO + 1)
+        return data if len(data) <= SAGHF_VIDEO and data[4:8] == b"ftyp" else None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None
+
+
+def video_befrest(token: str, chan: str, matn: str, mp4: bytes, qaleb: str = "") -> tuple[int | None, dict | None, str]:
+    """sendVideo چندبخشی با متن پست در زیرنویس (سرور فقط وقتی video می‌دهد که متن در سقف ۱۰۲۴ زیرنویس جا شود)."""
+    marz = "rele" + os.urandom(8).hex()
+    body = b"".join([f'--{marz}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode("utf-8")
+                     for k, v in (("chat_id", chan), ("caption", matn[:1024]), ("supports_streaming", "true"),
+                                  *((("parse_mode", qaleb),) if qaleb else ()))]
+                    + [f'--{marz}\r\nContent-Disposition: form-data; name="video"; filename="video.mp4"\r\n'
+                       f'Content-Type: video/mp4\r\n\r\n'.encode() + mp4 + b"\r\n", f"--{marz}--\r\n".encode()])
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendVideo", data=body, method="POST",
+                                 headers={"User-Agent": UA, "Content-Type": f"multipart/form-data; boundary={marz}"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status, json.loads(r.read().decode("utf-8") or "null"), ""
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read().decode("utf-8") or "null"), f"HTTP {e.code}"
+        except ValueError:
+            return e.code, None, f"HTTP {e.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return None, None, type(e).__name__
+    except ValueError:
+        return None, None, "پاسخ نامعتبر"
+
+
+def video_yekbar(site: str, token: str, chan: str) -> int:
+    """فرستادن یک‌بارهٔ ویدئو با تلنگر `client_payload.video_once` ({"video": "/video/x.mp4", "caption": "...", "qaleb": "HTML"}) برای وقتی که
+    سرور هنوز فیلد `video` را در صف نمی‌دهد. بی صف و بی اعلام به سرور؛ خروجی کار شناسهٔ پیام را نگه می‌دارد. 0 یعنی رفت یا چیزی نبود."""
+    raw = os.environ.get("VIDEO_ONCE", "").strip()
+    if not raw:
+        return 0
+    try:
+        v = json.loads(raw)
+        masir, cap = str(v["video"]), str(v["caption"])
+    except (ValueError, KeyError, TypeError):
+        print("::error::VIDEO_ONCE نامعتبر است")
+        return 1
+    mp4 = video_bgir(site, masir)
+    if not mp4:
+        print(f"::error::ویدئوی یک‌بار گرفته نشد: {masir}")
+        return 1
+    qaleb = v.get("qaleb") if v.get("qaleb") in ("HTML", "MarkdownV2") else ""
+    tc, tr, terr = video_befrest(token, chan, cap, mp4, qaleb)
+    ok = tc == 200 and isinstance(tr, dict) and tr.get("ok")
+    print(f"ویدئوی یک‌بار: {'رفت ' + str((tr.get('result') or {}).get('message_id', '')) if ok else 'نرفت ' + terr}")
+    return 0 if ok else 1
+
+
 def main() -> int:
     site = os.environ.get("SITE", "").rstrip("/")
     key = os.environ.get("RELE_KEY", "").strip()
@@ -95,7 +159,9 @@ def main() -> int:
         return 0
     if token.lower().startswith("bot"):
         token = token[3:]
-    rh = {"X-Rele-Key": key}
+    # X-Rele-Video: رله ویدئو می‌فرستد؛ سرور بی این سرآیند پست ویدئویی را در صف نگه می‌دارد (ملک‌دان، ۲ آبان ۱۴۰۵)
+    rh = {"X-Rele-Key": key, "X-Rele-Video": "1"}
+    shekast = video_yekbar(site, token, chan)
     # جبران: سرور پست‌های روزهای گذشته را که به بله رفته و به تلگرام نرفته به ترتیب زمان می‌دهد (سروری که این را نشناسد صف عادی را می‌دهد)
     jobran = os.environ.get("JOBRAN", "").strip() == "1"
     code, posts, err = http("GET", f"{site}/api/resane/montazer?bastar=telegram{'&jobran=1' if jobran else ''}",
@@ -116,7 +182,6 @@ def main() -> int:
             print("::warning::کانال تلگرام نام عمومی ندارد؛ پیوند t.me سایت کار نمی‌کند")
     else:
         print(f"::warning::getChat کانال نشد: {gc or ''} {gerr}")
-    shekast = 0
     for i, p in enumerate(posts):
         if i:
             # تلگرام در کانال حدود ۲۰ پیام در دقیقه می‌پذیرد؛ جبرانِ یک‌جا آرام‌تر می‌رود
@@ -124,12 +189,17 @@ def main() -> int:
         matn = str(p.get("matn", ""))
         # qaleb: سرور متن را HTML ساخته (پیوند روی واژه، سیمان‌باز ۲۹ مهر ۱۴۰۵)؛ سرور بی این فیلد متن ساده می‌دهد
         qaleb = p.get("qaleb") if p.get("qaleb") in ("HTML", "MarkdownV2") else ""
-        aks = aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None
+        # ویدئوی روزانه: سرور مسیرش را در `video` می‌دهد و زیرنویس را در `zirnevis`؛ نگرفتنش یعنی متن تنها
+        mp4 = video_bgir(site, str(p.get("video") or "")) if p.get("video") else None
+        aks = None if mp4 else (aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None)
         # زیر عکس متن کوتاه پست (عددها روی تصویرند)؛ سرور قدیمی‌تر zirnevis ندارد و همان matn می‌رود
-        tc, tr, terr = (aks_befrest(token, chan, str(p.get("zirnevis") or matn), aks, qaleb) if aks else (0, None, ""))
-        if aks and tc != 200 and tc is not None:
-            print(f"::warning::{p.get('id')}: عکس نرفت ({terr}); متن تنها")
-        if not aks or (tc != 200 and tc is not None):
+        if mp4:
+            tc, tr, terr = video_befrest(token, chan, str(p.get("zirnevis") or matn), mp4, qaleb)
+        else:
+            tc, tr, terr = (aks_befrest(token, chan, str(p.get("zirnevis") or matn), aks, qaleb) if aks else (0, None, ""))
+        if (aks or mp4) and tc != 200 and tc is not None:
+            print(f"::warning::{p.get('id')}: {'ویدئو' if mp4 else 'عکس'} نرفت ({terr}); متن تنها")
+        if not (aks or mp4) or (tc != 200 and tc is not None):
             tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/sendMessage",
                                 {"chat_id": chan, "text": matn[:4096],
                                  # پیش‌نمایش پیوند فقط وقتی سرور بخواهد؛ سرور قدیمی‌تر این فیلد را ندارد و پیش‌نمایش می‌ماند
