@@ -152,7 +152,70 @@ def main() -> int:
               f" · اعلام به سرور: {nc or nerr}")
         if natije["vaziat"] != "sent" or nc != 200:
             shekast += 1
+    try:
+        khosoosi(site, rh, token)
+    except Exception as e:  # noqa: BLE001 — رونوشت خصوصی هرگز انتشار کانال را قرمز نمی‌کند
+        print(f"::warning::رونوشت خصوصی: {type(e).__name__}")
     return 1 if shekast else 0
+
+
+def khosoosi(site: str, rh: dict, token: str) -> None:
+    """رونوشت گزارش شبانهٔ بله در گفت‌وگوی خصوصی سروش با ربات همین کانال (BALE.md بخش ۱۱، ۲ آبان ۱۴۰۵)، سوار همین اجرا.
+
+    سرور این بستر را نشناسد (فهرست می‌دهد، نه شیء) ← بی‌صدا هیچ. گفت‌وگو را فقط پیامی وصل می‌کند که واژهٔ رمز سرور را دارد،
+    و آن رمز فقط در گزارش بلهٔ خود سروش می‌آید. مخزن عمومی است: شناسهٔ گفت‌وگو، رمز و متن گزارش هرگز در خروجی کار چاپ نمی‌شوند.
+    """
+    tg = f"https://api.telegram.org/bot{token}"
+    natije_url = f"{site}/api/resane/natije"
+    code, v, _ = http("GET", f"{site}/api/resane/montazer?bastar=khosoosi", headers=rh, timeout=40)
+    if code != 200 or not isinstance(v, dict):
+        return
+    chat = str(v.get("chat") or "")
+    if not chat:
+        if not v.get("bot"):
+            mc, mr, _ = http("GET", f"{tg}/getMe")
+            nam = (mr.get("result") or {}).get("username") if mc == 200 and isinstance(mr, dict) else None
+            if nam:
+                http("POST", natije_url, {"id": "bot", "bastar": "khosoosi", "vaziat": "sent", "shenase": nam}, headers=rh)
+        ramz = str(v.get("ramz") or "")
+        if not ramz:
+            return
+        # بی offset: به‌روزرسانی‌ها مصرف نمی‌شوند و هر نوبت (تا ۲۴ ساعت، نگهداری تلگرام) دوباره دیده می‌شوند
+        uc, ur, _ = http("GET", f"{tg}/getUpdates?limit=100&allowed_updates=%5B%22message%22%5D")
+        if uc != 200 or not isinstance(ur, dict) or not ur.get("ok"):
+            print("رونوشت خصوصی: getUpdates نشد")
+            return
+        for u in reversed(ur.get("result") or []):
+            m = u.get("message") or {}
+            if (m.get("chat") or {}).get("type") == "private" and ramz in str(m.get("text", "")):
+                chat = str(m["chat"]["id"])
+                break
+        if not chat:
+            print("رونوشت خصوصی: هنوز وصل نشده")
+            return
+        nc, _, _ = http("POST", natije_url, {"id": "chat", "bastar": "khosoosi", "vaziat": "sent", "shenase": chat}, headers=rh)
+        if nc != 200:
+            return
+        http("POST", f"{tg}/sendMessage", {"chat_id": chat, "text": "✅ وصل شد: از این پس رونوشت گزارش شبانهٔ بله اینجا هم می‌آید."})
+        print("رونوشت خصوصی: گفت‌وگو وصل شد")
+        code, v, _ = http("GET", f"{site}/api/resane/montazer?bastar=khosoosi", headers=rh, timeout=40)
+        if code != 200 or not isinstance(v, dict):
+            return
+    for i, p in enumerate(v.get("payamha") or []):
+        if i:
+            time.sleep(1.1)
+        tc, tr, terr = http("POST", f"{tg}/sendMessage", {"chat_id": chat, "text": str(p.get("matn", ""))[:4096],
+                                                       "link_preview_options": {"is_disabled": True}})
+        if tc == 200 and isinstance(tr, dict) and tr.get("ok"):
+            http("POST", natije_url, {"id": p.get("id"), "bastar": "khosoosi", "vaziat": "sent"}, headers=rh)
+            print("رونوشت خصوصی: یک گزارش رفت")
+        elif tc == 403:
+            # سروش ربات را بست: گفت‌وگو کنار می‌رود و گزارش بعدی رمز تازه می‌آورد
+            http("POST", natije_url, {"id": "chat", "bastar": "khosoosi", "vaziat": "failed"}, headers=rh)
+            print("رونوشت خصوصی: ربات بسته شده؛ وصل دوباره لازم است")
+            return
+        else:
+            print(f"رونوشت خصوصی: نرفت ({terr})")
 
 
 if __name__ == "__main__":
