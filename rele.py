@@ -160,7 +160,8 @@ def main() -> int:
     if token.lower().startswith("bot"):
         token = token[3:]
     # X-Rele-Video: رله ویدئو می‌فرستد؛ سرور بی این سرآیند پست ویدئویی را در صف نگه می‌دارد (ملک‌دان، ۲ آبان ۱۴۰۵)
-    rh = {"X-Rele-Key": key, "X-Rele-Video": "1"}
+    # X-Rele-Copy: رله بازنشر ویدئو را با copyMessage از پیام پیشین همان کانال می‌فرستد (فیلد `kopi`)؛ سرور بی این سرآیند فیلد نمی‌دهد (آهن‌حساب، DARKHASTHA ۴۵۴)
+    rh = {"X-Rele-Key": key, "X-Rele-Video": "1", "X-Rele-Copy": "1"}
     shekast = video_yekbar(site, token, chan)
     # جبران: سرور پست‌های روزهای گذشته را که به بله رفته و به تلگرام نرفته به ترتیب زمان می‌دهد (سروری که این را نشناسد صف عادی را می‌دهد)
     jobran = os.environ.get("JOBRAN", "").strip() == "1"
@@ -190,16 +191,41 @@ def main() -> int:
         # qaleb: سرور متن را HTML ساخته (پیوند روی واژه، سیمان‌باز ۲۹ مهر ۱۴۰۵)؛ سرور بی این فیلد متن ساده می‌دهد
         qaleb = p.get("qaleb") if p.get("qaleb") in ("HTML", "MarkdownV2") else ""
         # ویدئوی روزانه: سرور مسیرش را در `video` می‌دهد و زیرنویس را در `zirnevis`؛ نگرفتنش یعنی متن تنها
-        mp4 = video_bgir(site, str(p.get("video") or "")) if p.get("video") else None
-        aks = None if mp4 else (aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None)
+        # بازنشر: `kopi` شناسهٔ پیام پیشین همین کلیپ در همین کانال است؛ copyMessage بی بارگذاری دوبارهٔ ویدئو و بی برچسب «بازارسال‌شده از»
+        kopi_ok = False
+        kopi = str(p.get("kopi") or "")
+        if kopi.isdigit():
+            tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/copyMessage",
+                                {"chat_id": chan, "from_chat_id": chan, "message_id": int(kopi)})
+            kopi_ok = tc == 200 and isinstance(tr, dict) and bool(tr.get("ok"))
+            if not kopi_ok:
+                print(f"::warning::{p.get('id')}: copyMessage نرفت ({terr or tc})")
+                if tc is None:
+                    # نتیجهٔ نامعلوم: اعلام نمی‌شود؛ نوبت بعد دوباره
+                    shekast += 1
+                    continue
+                if not p.get("video"):
+                    # شکست قطعی (مثلاً پیام اصلی پاک شده) و فایلی برای بارگذاری نیست: کلیپ بی ویدئو نمی‌رود؛ شکست اعلام می‌شود تا
+                    # پست در صف نماند و هر اجرا دوباره قرمز نشود
+                    desc = tr.get("description", "") if isinstance(tr, dict) else ""
+                    nc, _, nerr = http("POST", f"{site}/api/resane/natije",
+                                       {"id": p.get("id"), "bastar": "telegram", "vaziat": "failed",
+                                        "khata": f"copyMessage {terr} {desc}".strip()[:200]}, headers=rh)
+                    print(f"{p.get('id')}: failed copyMessage · اعلام به سرور: {nc or nerr}")
+                    shekast += 1
+                    continue
+        mp4 = None if kopi_ok else (video_bgir(site, str(p.get("video") or "")) if p.get("video") else None)
+        aks = None if (mp4 or kopi_ok) else (aks_bgir(site, rh, str(p.get("id", ""))) if p.get("tasvir") else None)
         # زیر عکس متن کوتاه پست (عددها روی تصویرند)؛ سرور قدیمی‌تر zirnevis ندارد و همان matn می‌رود
-        if mp4:
+        if kopi_ok:
+            pass
+        elif mp4:
             tc, tr, terr = video_befrest(token, chan, str(p.get("zirnevis") or matn), mp4, qaleb)
         else:
             tc, tr, terr = (aks_befrest(token, chan, str(p.get("zirnevis") or matn), aks, qaleb) if aks else (0, None, ""))
         if (aks or mp4) and tc != 200 and tc is not None:
             print(f"::warning::{p.get('id')}: {'ویدئو' if mp4 else 'عکس'} نرفت ({terr}); متن تنها")
-        if not (aks or mp4) or (tc != 200 and tc is not None):
+        if not kopi_ok and (not (aks or mp4) or (tc != 200 and tc is not None)):
             tc, tr, terr = http("POST", f"https://api.telegram.org/bot{token}/sendMessage",
                                 {"chat_id": chan, "text": matn[:4096],
                                  # پیش‌نمایش پیوند فقط وقتی سرور بخواهد؛ سرور قدیمی‌تر این فیلد را ندارد و پیش‌نمایش می‌ماند
