@@ -64,6 +64,8 @@ jobs:
           JOBRAN: ${{ github.event.client_payload.jobran && '1' || '' }}
           # ویدئوی یک‌بار (ملک‌دان، ۲ آبان ۱۴۰۵): تلنگر با client_payload {"video_once": {"video": "/video/x.mp4", "caption": "…", "qaleb": "HTML"}} یک ویدئو را بی صف می‌فرستد
           VIDEO_ONCE: ${{ github.event.client_payload.video_once && toJSON(github.event.client_payload.video_once) || '' }}
+          # عکس یک‌بار (ملک‌دان، ۲۱ آبان ۱۴۰۵): تلنگر با client_payload {"aks_once": {"aks": "aks-yekbar/x.png", "caption": "…", "qaleb": "HTML"}} عکسی از پوشهٔ aks-yekbar همین مخزن را بی صف می‌فرستد
+          AKS_ONCE: ${{ github.event.client_payload.aks_once && toJSON(github.event.client_payload.aks_once) || '' }}
         run: python rele.py
       - name: زنده نگه داشتن زمان‌بند (روز اول ماه)
         if: always() && strategy.job-index == 0

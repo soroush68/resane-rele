@@ -146,6 +146,33 @@ def video_yekbar(site: str, token: str, chan: str) -> int:
     return 0 if ok else 1
 
 
+AKS_RE = re.compile(r"aks-yekbar/[a-z0-9-]+\.(png|jpg)")
+
+
+def aks_yekbar(token: str, chan: str) -> int:
+    """فرستادن یک‌بارهٔ عکس با تلنگر `client_payload.aks_once` ({"aks": "aks-yekbar/x.png", "caption": "...", "qaleb": "HTML"}) برای
+    اطلاعیهٔ دستی (ملک‌دان، ۲۱ آبان ۱۴۰۵): عکس از همین مخزن خوانده می‌شود، بی صف و بی اعلام به سرور. 0 یعنی رفت یا چیزی نبود."""
+    raw = os.environ.get("AKS_ONCE", "").strip()
+    if not raw:
+        return 0
+    try:
+        v = json.loads(raw)
+        masir, cap = str(v["aks"]), str(v["caption"])
+    except (ValueError, KeyError, TypeError):
+        print("::error::AKS_ONCE نامعتبر است")
+        return 1
+    if not AKS_RE.fullmatch(masir) or not os.path.isfile(masir):
+        print(f"::error::عکس یک‌باره پیدا نشد: {masir}")
+        return 1
+    with open(masir, "rb") as f:
+        png = f.read()
+    qaleb = v.get("qaleb") if v.get("qaleb") in ("HTML", "MarkdownV2") else ""
+    tc, tr, terr = aks_befrest(token, chan, cap[:1024], png, qaleb)
+    ok = tc == 200 and isinstance(tr, dict) and tr.get("ok")
+    print(f"عکس یک‌باره: {'رفت ' + str((tr.get('result') or {}).get('message_id', '')) if ok else 'نرفت ' + terr}")
+    return 0 if ok else 1
+
+
 def main() -> int:
     site = os.environ.get("SITE", "").rstrip("/")
     key = os.environ.get("RELE_KEY", "").strip()
@@ -162,7 +189,7 @@ def main() -> int:
     # X-Rele-Video: رله ویدئو می‌فرستد؛ سرور بی این سرآیند پست ویدئویی را در صف نگه می‌دارد (ملک‌دان، ۲ آبان ۱۴۰۵)
     # X-Rele-Copy: رله بازنشر ویدئو را با copyMessage از پیام پیشین همان کانال می‌فرستد (فیلد `kopi`)؛ سرور بی این سرآیند فیلد نمی‌دهد (آهن‌حساب، DARKHASTHA ۴۵۴)
     rh = {"X-Rele-Key": key, "X-Rele-Video": "1", "X-Rele-Copy": "1"}
-    shekast = video_yekbar(site, token, chan)
+    shekast = video_yekbar(site, token, chan) + aks_yekbar(token, chan)
     # جبران: سرور پست‌های روزهای گذشته را که به بله رفته و به تلگرام نرفته به ترتیب زمان می‌دهد (سروری که این را نشناسد صف عادی را می‌دهد)
     jobran = os.environ.get("JOBRAN", "").strip() == "1"
     code, posts, err = http("GET", f"{site}/api/resane/montazer?bastar=telegram{'&jobran=1' if jobran else ''}",
